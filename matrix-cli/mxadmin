@@ -1,4 +1,5 @@
-#!/usr/bin/env python3
+#!/home/thomasl/tools/matrix-cli/matrix-cli/venv/bin/python
+import sys
 import yaml
 import logging
 import argparse
@@ -27,17 +28,47 @@ console_handler = logging.StreamHandler()
 console_handler.setFormatter(log_formatter)
 root_logger.addHandler(console_handler)
 
-parser = argparse.ArgumentParser(description='Matrix Command Line Admin Tool.')
-parser.add_argument('--resolve-aliases', nargs='+')
-parser.add_argument('--park-aliases', nargs='+')
-parser.add_argument('--shutdown-rooms', nargs='+')
-parser.add_argument('--deactivate-users', nargs='+')
-parser.add_argument('--delete-aliases', nargs='+')
-parser.add_argument('--delist-rooms', nargs='+')
-parser.add_argument('--test', nargs='+')
-parser.add_argument('--assign-alias', nargs=2)
-parser.add_argument('--message')
+PARK_ALIASES = 'park-aliases'
+SHUTDOWN_ROOMS = 'shutdown-rooms'
+DEACTIVATE_USERS = 'deactivate-users'
+DELETE_ALIASES = 'delete-aliases'
+DELIST_ROOMS = 'delist-rooms'
+ASSIGN_ALIAS = 'assign-alias'
+RESOLVE_ALIASES = 'resolve-aliases'
+TEST = 'test'
+
+MUTATING = [PARK_ALIASES,
+            SHUTDOWN_ROOMS,
+            DEACTIVATE_USERS,
+            DELETE_ALIASES,
+            DELIST_ROOMS,
+            ASSIGN_ALIAS,
+            TEST]
+NON_MUTATING = [RESOLVE_ALIASES]
+COMMANDS = MUTATING + NON_MUTATING
+
+parser = argparse.ArgumentParser(description='Matrix Command Line Admin Tool. Wrapper for the Synapse Admin HTTP APIs. Logs all actions to a local file and a Matrix room.')
+parser.add_argument('command', help='One of: %s' % ', '.join(COMMANDS), nargs='+')
+parser.add_argument('--reason', help='The reason for the administrative action that\'s been taken; recorded in the log.', nargs='+')
+parser.add_argument('--message', help='Optional parameter. When deactivating a room you can specify the message written to the new room. Defaults to "This room has been removed from the matrix.org homeserverr due to violating the terms of use.".',nargs='+')
+
 args = parser.parse_args()
+command = args.command[0]
+command_args = args.command[1:]
+
+if command not in COMMANDS:
+    parser.error('%s is not a recognised command\nPlease choose from: %s' % (command, ', '.join(COMMANDS)))
+
+if command in MUTATING:
+    if args.reason:
+        reason = ' '.join(args.reason)
+    else:
+        parser.error('Mutating commands require a --reason')
+
+if command == 'assign-alias' and len(command_args) != 2:
+    parser.error('assign-alias requires two arguments: an alias and a room id (the order isn\'t important)')
+
+message = ' '.join(args.message) if args.message else None
 
 admin = MatrixAdmin(
     CONFIG.USER['mxid'],
@@ -49,31 +80,35 @@ matrix_handler = MatrixStreamLogger(admin._client, log_room)
 matrix_handler.setFormatter(log_formatter)
 root_logger.addHandler(matrix_handler)
 
-if args.resolve_aliases:
-    for alias in args.resolve_aliases:
-        print('%s -> %s' % (alias, admin.resolve_alias(alias)))
-elif args.assign_alias:
-    if args.assign_alias[0].startswith('#') and args.assign_alias[1].startswith('!'):
-        admin.assign_alias(args.assign_alias[1], args.assign_alias[0])
+if command == RESOLVE_ALIASES:
+    for alias in command_args:
+        if sys.stdout.isatty():
+            print('%s -> %s' % (alias, admin.resolve_alias(alias)))
+        else:
+            print(admin.resolvee_alias(alias))
+elif command == ASSIGN_ALIAS:
+    if command_args[0].startswith('#') and command_args[1].startswith('!'):
+        admin.assign_alias(command_args[1], command_args[0], reason)
     else:
-        admin.assign_alias(args.assign_alias[0], args.assign_alias[1])
-elif args.delist_rooms:
-    for room in args.delist_rooms:
-        admin.delist_room(room)
-elif args.delete_aliases:
-    for alias in args.delete_aliases:
-        admin.delete_alias(alias)
-elif args.park_aliases:
-    for alias in args.park_aliases:
-        admin.park_alias(alias)
-elif args.shutdown_rooms:
-    for room in args.shutdown_rooms:
+        admin.assign_alias(command_args[0], command_args[1], reason)
+elif command == DELIST_ROOMS:
+    for room in command_args:
+        admin.delist_room(room, reason)
+elif command == DELETE_ALIASES:
+    for alias in command_args:
+        admin.delete_alias(alias, reason)
+elif command == PARK_ALIASES:
+    for alias in command_args:
+        admin.park_alias(alias, reason)
+elif command == SHUTDOWN_ROOMS:
+    for room in command_args:
         admin.shutdown_room_and_quarantine_media(room,
-                                                 message=args.message)
-elif args.test:
-    for value in args.test:
+                                                 reason,
+                                                 message=message)
+elif command == TEST:
+    for value in command_args:
         print('Testing: ' + value)
-elif args.deactivate_users:
-    for user in args.deactivate_users:
-        admin.deactivate_user(user)
-
+    print(reason)
+elif command == DEACTIVATE_USERS:
+    for user in command_args:
+        admin.deactivate_user(user, reason)
