@@ -8,8 +8,8 @@ matrix-client==0.3.2
 mccabe==0.6.1
 pyaml==18.11.0
 pylint==2.1.1
-PyYAML==3.13
+pyyaml>=4.2b1
 requests==2.20.0
 six==1.11.0
-urllib3==1.24
+urllib3>=1.24.2
 wrapt==1.10.11
