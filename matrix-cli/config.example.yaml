@@ -1,0 +1,4 @@
+user:
+  mxid: "@abusemgmt:homeserver.tld"
+  password: "pAsSwOrD"
+logRoomId: "!roomIntoWhichWeLogAdminEvents"
